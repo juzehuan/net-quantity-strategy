@@ -316,7 +316,10 @@ def main():
         # 保存汇总结果
         if results:
             results_df = pd.DataFrame(results)
-            results_df = results_df[['股票代码', '股票名称', '当日股价', '当日涨跌幅', '操作策略', '持有天数', '持有期间总收益率', '回测期间总收益率']]
+            # 添加最新日期和回测时间区间列
+            results_df['最新日期'] = end_date
+            results_df['回测时间区间'] = f'{start_date}至{end_date}'
+            results_df = results_df[['股票代码', '股票名称', '最新日期', '回测时间区间', '当日股价', '当日涨跌幅', '操作策略', '持有天数', '持有期间总收益率', '回测期间总收益率']]
 
             results_path = 'result/strategy_results.csv'
             # 确保目录存在
