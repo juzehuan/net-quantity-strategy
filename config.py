@@ -67,6 +67,17 @@ class StrategyConfig:
                 }
             }
 
+# 股票代码配置
+STOCK_CODES = [
+    'sh.600036',  # 招商银行
+    'sh.601318',  # 中国平安
+    'sh.600000'   # 浦发银行
+]
+
+# 日期范围配置
+START_DATE = '2020-01-01'
+END_DATE = '2023-12-31'
+
 # 创建默认配置实例
 DEFAULT_CONFIG = StrategyConfig()
 
