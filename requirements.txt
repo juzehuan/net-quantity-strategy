@@ -1,0 +1,6 @@
+# 项目依赖
+numpy==1.26.4
+pandas==2.2.1
+tensorflow==2.16.1
+protobuf==4.25.3
+scikit-learn==1.4.2
