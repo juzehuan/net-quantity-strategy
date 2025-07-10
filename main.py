@@ -4,8 +4,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 import os
-import threading
+import os
 import concurrent.futures
+import os
 import baostock as bs
 import random
 import logging
@@ -17,6 +18,7 @@ from sklearn.linear_model import LogisticRegression
 from datetime import datetime, timedelta
 from technical_indicators import calculate_macd, calculate_big_order_net
 from config import DEFAULT_CONFIG
+from tqdm import tqdm
 
 from config import STOCK_CODES, START_DATE, END_DATE
 from datetime import datetime
@@ -187,6 +189,36 @@ STRATEGY_PARAMS = {
 
 
 
+# 处理单只股票数据并应用策略
+def process_stock(code, info):
+    thread_start = time.time()
+    try:
+        # 应用交易策略
+        df = apply_strategy(info['data'])
+        if df.empty:
+            logger.warning(f'{code}策略应用后数据为空，跳过处理')
+            return
+
+        # 获取最新交易信号
+        latest_data = df.iloc[-1]
+
+        # 提取所需结果字段
+        result = {
+            '股票代码': code,
+            '股票名称': info['name'],
+            '当日股价': round(latest_data['close'], 2),
+            '当日涨跌幅': round(latest_data['daily_return'], 2),
+            '操作策略': latest_data['operation'],
+            '持有天数': latest_data['holding_days'],
+            '持有期间总收益率': round(latest_data['holding_return'], 2),
+            '回测期间总收益率': round(latest_data['total_return'], 2),
+            '处理耗时(秒)': round(time.time() - thread_start, 4)
+        }
+        return result
+        logger.info(f'{code}策略应用完成，耗时{round(time.time() - thread_start, 4)}秒')
+    except Exception as e:
+        logger.error(f'{code}策略应用失败: {str(e)}', exc_info=True)
+
 def main():
     global main_executed
     if main_executed:
@@ -230,7 +262,7 @@ def main():
 
         # 第一阶段：批量获取所有股票数据
         logger.info('开始批量获取股票数据...')
-        for item in stock_info:
+        for item in tqdm(stock_info, desc='获取股票数据', unit='只'):
             # 确保item是元组且至少包含代码
             if not isinstance(item, tuple) or len(item) < 1:
                 logger.warning(f'无效的股票信息格式: {item}，跳过处理')
@@ -243,14 +275,14 @@ def main():
             try:
                 # 获取股票名称（如果可用）
                 name = item[1] if len(item) > 1 else '未知名称'
-                logger.info(f'开始获取股票数据: {code} - {name}')
+                logger.debug(f'开始获取股票数据: {code} - {name}')
                 # 获取股票数据
                 try:
                       stock_data = get_stock_data(code, name)
                       if stock_data is not None and not stock_data.empty:
                           all_stock_data[code] = {'data': stock_data, 'name': name}
                           processed_codes.add(code)
-                          logger.info(f'{code}数据获取成功，共{len(stock_data)}条记录')
+                          logger.debug(f'{code}数据获取成功，共{len(stock_data)}条记录')
                       else:
                           logger.warning(f'{code}未获取到有效数据')
                 except Exception as e:
@@ -265,52 +297,27 @@ def main():
         # 应用策略并汇总结果
         logger.info(f'共获取到{len(all_stock_data)}只股票数据，开始应用交易策略...')
         results = []
-        results_lock = threading.Lock()  # 线程锁保护共享资源
-
-        # 定义线程处理函数
-        def process_stock(code, info):
-            thread_start = time.time()
-            try:
-                # 应用交易策略
-                df = apply_strategy(info['data'])
-                if df.empty:
-                    logger.warning(f'{code}策略应用后数据为空，跳过处理')
-                    return
-
-                # 获取最新交易信号
-                latest_data = df.iloc[-1]
-
-                # 提取所需结果字段
-                result = {
-                    '股票代码': code,
-                    '股票名称': info['name'],
-                    '当日股价': round(latest_data['close'], 2),
-                    '当日涨跌幅': round(latest_data['daily_return'], 2),
-                    '操作策略': latest_data['operation'],
-                    '持有天数': latest_data['holding_days'],
-                    '持有期间总收益率': round(latest_data['holding_return'], 2),
-                    '回测期间总收益率': round(latest_data['total_return'], 2),
-                    '处理耗时(秒)': round(time.time() - thread_start, 4)
-                }
-                with results_lock:
-                    results.append(result)
-                logger.info(f'{code}策略应用完成，耗时{round(time.time() - thread_start, 4)}秒')
-            except Exception as e:
-                logger.error(f'{code}策略应用失败: {str(e)}', exc_info=True)
+    
 
         # 使用线程池处理股票数据
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        max_workers = os.cpu_count() or 4
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有任务
             futures = [executor.submit(process_stock, code, info) for code, info in all_stock_data.items()]
-            # 等待所有任务完成
-            for future in concurrent.futures.as_completed(futures):
-                pass  # 可以在这里处理异常或结果
+            # 收集结果
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc='应用策略', unit='只'):
+                try:
+                    result = future.result()
+                    if result:
+                        results.append(result)
+                except Exception as e:
+                    logger.error(f'处理任务时发生异常: {str(e)}')
 
         # 保存汇总结果
         if results:
             results_df = pd.DataFrame(results)
             results_df = results_df[['股票代码', '股票名称', '当日股价', '当日涨跌幅', '操作策略', '持有天数', '持有期间总收益率', '回测期间总收益率']]
-            import os
+
             results_path = 'result/strategy_results.csv'
             # 确保目录存在
             os.makedirs(os.path.dirname(results_path), exist_ok=True)

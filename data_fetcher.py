@@ -29,7 +29,7 @@ def get_stock_data(code: str, name: str, start_date: Optional[datetime] = None, 
     # 构建缓存路径
     CACHE_DIR = Path(__file__).resolve().parent / 'data'
     CACHE_DIR.mkdir(exist_ok=True)
-    logger.info(f"缓存目录已确认: {CACHE_DIR}")
+    logger.debug(f"缓存目录已确认: {CACHE_DIR}")
 
     # 生成缓存文件名
     # 使用股票代码和名称组合作为缓存文件名，移除特殊字符
@@ -41,15 +41,15 @@ def get_stock_data(code: str, name: str, start_date: Optional[datetime] = None, 
     if cache_path.exists():
         modified_time = datetime.fromtimestamp(cache_path.stat().st_mtime)
         if (datetime.now() - modified_time).days < DEFAULT_CONFIG.cache_expire_days:
-            logger.info(f"缓存文件有效，加载数据: {cache_path}")
+            logger.debug(f"缓存文件有效，加载数据: {cache_path}")
             try:
                 return pd.read_pickle(cache_path)
             except Exception as e:
                 logger.warning(f"缓存文件损坏，重新获取数据: {str(e)}")
         else:
-            logger.info(f"缓存文件已过期，重新获取数据: {cache_path}")
+            logger.debug(f"缓存文件已过期，重新获取数据: {cache_path}")
     else:
-        logger.info(f"缓存文件不存在，将获取新数据: {cache_path}")
+        logger.debug(f"缓存文件不存在，将获取新数据: {cache_path}")
 
     # 计算所需数据量
     min_required_rows = max(DEFAULT_CONFIG.macd_params['short_window'], DEFAULT_CONFIG.macd_params['long_window']) * 2
