@@ -1,94 +1,65 @@
-import baostock as bs
+import akshare as ak
 import re
 import pandas as pd
 from datetime import datetime, timedelta
 import time
 import os
-import os
+import sys
 import concurrent.futures
-import os
-import baostock as bs
-import random
 import logging
-from typing import Dict, List, Optional, Tuple
 pd.set_option('future.no_silent_downcasting', True)
 import numpy as np
-from typing import List, Optional, Tuple, Union
-from sklearn.linear_model import LogisticRegression
+from typing import List, Tuple
 from datetime import datetime, timedelta
-from technical_indicators import calculate_macd, calculate_big_order_net
-from config import DEFAULT_CONFIG
 from tqdm import tqdm
 
-from config import STOCK_CODES, START_DATE, END_DATE
 from datetime import datetime
 import pandas as pd
 # 配置日志系统
+class ExitOnErrorHandler(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            sys.exit(1)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.WARNING)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('stock_analysis.log', encoding='utf-8'),
-        logging.StreamHandler()
+        logging.FileHandler('stock_analysis.log', encoding='utf-8', mode='w'),
+        stream_handler,
+        ExitOnErrorHandler()
     ]
 )
 logger = logging.getLogger(__name__)
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score
-
-# 初始化Baostock
-def init_baostock() -> bool:
-    """初始化Baostock API连接
-
-    尝试登录Baostock服务，如果登录成功返回True，否则返回False
-
-    返回:
-        bool: 登录成功返回True，失败返回False
-    """
-    try:
-        lg = bs.login()
-        if lg.error_code != '0':
-            logger.error(f'登录失败: {lg.error_code} - {lg.error_msg}')
-            return False
-        logger.info('Baostock登录成功')
-        return True
-    except Exception as e:
-        logger.error(f'登录异常: {str(e)}', exc_info=True)
-        return False
-
 # 获取所有A股代码和名称
 def get_all_stock_codes() -> List[Tuple[str, str]]:
-    """获取上证指数(000001.SH)的成分股代码和名称列表
-
-    返回:
-        List[Tuple[str, str]]: 成分股代码和名称的元组列表
-    """
+    """获取A股股票代码和名称列表"""
     try:
-           # 使用固定历史日期测试数据获取（2023年1月3日，周二）
-        trade_date_str = '2025-07-08'
-        # 恢复date关键字参数，使用API要求的YYYY-MM-DD格式
-        rs = bs.query_all_stock(trade_date_str)  # 获取全市场股票列表，传递日期参数
-        logger.info(f'Baostock API调用结果 - 错误代码: {rs.error_code}, 错误信息: {rs.error_msg}')
-        if rs.error_code != '0':
-            logger.error(f'获取指数成分股失败: {rs.error_code} - {rs.error_msg}')
-            return []
-        # 直接使用API提供的get_data()方法获取DataFrame
-        df = rs.get_data()
-        data_list = df.values.tolist()
-        logger.info(f'原始股票数据量: {len(data_list)}')
-        # 筛选上海和深圳证券交易所A股（代码以sh.6、sz.0或sz.3开头）
-        # 调整筛选逻辑：支持sh.6、sz.0、sz.3开头或纯数字6、0、3开头的代码格式
-        df = df[df['code'].str.match(r'^(sh\.)?6|(sz\.)?(0|3)')]
+        # 使用AKShare获取A股实时行情数据
+        df = ak.stock_zh_a_spot_em()
+        logger.info(f'获取A股数据成功，原始数据量: {len(df)}')
+
+        # 筛选上海和深圳证券交易所A股
+        # 代码格式: 6开头为沪市，0或3开头为深市
+        df = df[df['代码'].str.match(r'^(6|0|3)')]
         logger.info(f'筛选后A股数量: {len(df)}')
+
+        # 转换代码格式为sh.600000或sz.000000
+        def format_code(code):
+            if code.startswith('6'):
+                return f'sh.{code}'
+            else:
+                return f'sz.{code}'
+
         # 提取代码和名称并转换为元组列表
-        stock_info = [(row['code'], row['code_name']) for _, row in df.iterrows()]
+        stock_info = [(format_code(row['代码']), row['名称']) for _, row in df.iterrows()]
         logger.info(f'成功获取{len(stock_info)}只A股股票')
         return stock_info
     except Exception as e:
-        logger.error(f'获取指数成分股异常: {str(e)}', exc_info=True)
+        logger.error(f'获取A股股票列表异常: {str(e)}', exc_info=True)
         return []
 
 
@@ -182,7 +153,6 @@ def apply_strategy(df):
 main_executed = False
 # 策略参数配置 - 集中管理可调整参数
 STRATEGY_PARAMS = {
-    'data_range_days': 600,  # 数据获取范围
     'analysis_days': 600,      # 分析周期
     'session_refresh_interval': 100  # 会话刷新间隔
 }
@@ -218,6 +188,7 @@ def process_stock(code, info):
         logger.info(f'{code}策略应用完成，耗时{round(time.time() - thread_start, 4)}秒')
     except Exception as e:
         logger.error(f'{code}策略应用失败: {str(e)}', exc_info=True)
+        sys.exit(1)
 
 def main():
     global main_executed
@@ -227,11 +198,6 @@ def main():
     logger.info('主函数开始执行')
     logger.info("交易策略: MACD+大单净量策略")
     start_time = time.time()
-
-    # 初始化Baostock
-    if not init_baostock():
-        logger.error('Baostock初始化失败')
-        return
 
     try:
         # 获取日期范围
@@ -244,16 +210,14 @@ def main():
                 break
             delta += 1
 
-        # 使用配置的参数控制数据获取范围
-        start_date = (prev_date - timedelta(days=STRATEGY_PARAMS['data_range_days'])).strftime('%Y-%m-%d')
-        logger.info(f'使用日期范围: {start_date} 至 {end_date}')
-
         # 获取股票列表
-        stock_info = get_all_stock_codes()  # 获取全部成分股
+        # 获取全部成分股并过滤科创板(688/689开头)和创业板(300开头)股票
+        # 假设get_all_stock_codes()返回元组列表，取第一个元素作为股票代码字符串
+        stock_info = [code for code in get_all_stock_codes() if not code[0].startswith(('sh688', 'sh689', 'sz300'))]
         logger.info(f'获取到{len(stock_info)}只股票')
 
         if not stock_info:
-            logger.error('错误：未获取到任何股票代码，请检查Baostock连接或筛选条件')
+            logger.error('错误：未获取到任何股票代码，请检查akshare连接或筛选条件')
             return
 
         # 初始化已处理代码集合和数据存储字典
@@ -286,18 +250,18 @@ def main():
                       else:
                           logger.warning(f'{code}未获取到有效数据')
                 except Exception as e:
-                      logger.error(f"获取{code}数据时发生错误: {str(e)}", exc_info=True)
-                      logger.info(f"继续处理下一个股票代码...")
-                      continue
+                    logger.error(f"获取{code}数据时发生错误: {str(e)}", exc_info=True)
+                    sys.exit(1)
             except Exception as e:
                 logger.error(f'处理{code}时发生错误: {str(e)}', exc_info=True)
+                sys.exit(1)
             # 控制请求频率
             # time.sleep(0.5)
 
         # 应用策略并汇总结果
         logger.info(f'共获取到{len(all_stock_data)}只股票数据，开始应用交易策略...')
         results = []
-    
+
 
         # 使用线程池处理股票数据
         max_workers = os.cpu_count() or 4
@@ -331,11 +295,7 @@ def main():
 
     except Exception as e:
         logger.error(f'主程序执行异常: {str(e)}', exc_info=True)
-    finally:
-        # 确保登出
-        bs.logout()
-        logger.info('Baostock会话已关闭')
-
+        sys.exit(1)
     total_time = time.time() - start_time
     logger.info(f'程序总执行时间: {total_time:.2f}秒')
     logger.info('主函数执行完毕')

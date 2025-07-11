@@ -1,3 +1,6 @@
-# 项目依赖
-numpy==1.26.4
-pandas==2.2.1
+akshare>=1.10.0
+scikit-learn>=1.2.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+numpy>=1.27.0
+pandas>=2.2.2

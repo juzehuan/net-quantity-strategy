@@ -13,15 +13,15 @@ class StrategyConfig:
     max_retries: int = 3        # API调用最大重试次数
     retry_wait_time: int = 5    # API重试等待时间(秒)
     cache_expire_days: int = 1  # 缓存过期天数
-    
+
     # 技术指标参数
     macd_params: Dict[str, int] = None
     order_params: Dict = None
-    
+
     # 交易信号参数
     buy_threshold: float = 0.2   # 买入信号阈值
     sell_threshold: float = -1.0 # 卖出信号阈值
-    
+
     # 默认流通盘假设(股)，实际应用中应从数据源获取
     default_share_capital: float = 5e8  # 5亿股
     # 数据容错参数
@@ -38,7 +38,7 @@ class StrategyConfig:
             raise ValueError("重试等待时间不能少于1秒")
         if self.min_valid_data_ratio <= 0 or self.min_valid_data_ratio > 1:
             raise ValueError("最小有效数据比例必须在(0, 1]范围内")
-        
+
         # MACD默认参数
         if self.macd_params is None:
             self.macd_params = {
@@ -46,7 +46,7 @@ class StrategyConfig:
                 'long_window': 26,
                 'signal_window': 9
             }
-        
+
         # MACD参数验证
         required_macd_keys = ['short_window', 'long_window', 'signal_window']
         if not all(key in self.macd_params for key in required_macd_keys):
@@ -55,7 +55,7 @@ class StrategyConfig:
             raise ValueError("MACD短期窗口必须小于长期窗口")
         if self.macd_params['signal_window'] >= self.macd_params['short_window']:
             raise ValueError("MACD信号窗口必须小于短期窗口")
-        
+
         # 大单参数默认值
         if self.order_params is None:
             self.order_params = {
@@ -67,12 +67,7 @@ class StrategyConfig:
                 }
             }
 
-# 股票代码配置
-STOCK_CODES = [
-    'sh.600036',  # 招商银行
-    'sh.601318',  # 中国平安
-    'sh.600000'   # 浦发银行
-]
+
 
 # 日期范围配置
 START_DATE = '2020-01-01'
